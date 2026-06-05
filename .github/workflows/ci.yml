@@ -75,4 +75,14 @@ jobs:
           pip install -e ".[s3,test,celery]"
       - name: Run tests
         run: |
-          pytest
+          pytest --cov=muflow --cov-report=term-missing \
+            --cov-report=xml --cov-report=html
+      - name: Upload coverage report
+        if: ${{ matrix.python-version == '3.12' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-muflow
+          path: |
+            coverage.xml
+            htmlcov
+          if-no-files-found: warn
