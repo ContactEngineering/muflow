@@ -7,7 +7,12 @@ from datetime import date, datetime
 import numpy as np
 import xarray as xr
 
+import json
+
+import pytest
+
 from muflow.io.json import (
+    ExtendedJSONEncoder,
     dumps_json,
     loads_json,
 )
@@ -74,6 +79,61 @@ class TestExtendedJSONEncoder:
         d = date(2023, 6, 15)
         result = dumps_json({"date": d})
         assert "2023-06-15" in result
+
+
+class TestEncoderDirectBranches:
+    """Cover the ExtendedJSONEncoder methods that the normal dumps_json path
+    bypasses.
+
+    ``iterencode`` pre-converts dict/list payloads via ``_convert_floats``, so
+    ``default()`` only fires for values that survive that pass — e.g. numpy
+    scalars nested inside a *tuple* (which ``_convert_floats`` does not
+    recurse into). And because ``np.float64`` subclasses ``float``, the
+    ``np.floating`` branch (and ``_encode_np_floating``) is reached only by
+    ``np.float32``.
+    """
+
+    def test_np_float32_regular_and_special(self):
+        # np.float32 is np.floating but NOT a Python float, so it exercises
+        # the _convert_floats -> _encode_np_floating path.
+        assert "1.5" in dumps_json({"v": np.float32(1.5)})
+        assert '"NaN"' in dumps_json({"v": np.float32("nan")})
+        assert '"Infinity"' in dumps_json({"v": np.float32("inf")})
+
+    def test_default_fires_for_numpy_inside_tuple(self):
+        # _convert_floats leaves tuples untouched, so json serialises the tuple
+        # as an array and calls default() for each numpy/​special element.
+        payload = {
+            "t": (
+                np.int64(7),
+                np.float32(2.5),
+                np.bool_(True),
+                np.array([1, 2]),
+                float("nan"),
+            )
+        }
+        loaded = loads_json(dumps_json(payload))
+        seq = loaded["t"]
+        assert seq[0] == 7
+        assert seq[1] == pytest.approx(2.5)
+        assert seq[2] is True
+        assert seq[3] == [1, 2]
+        assert math.isnan(seq[4])
+
+    def test_encode_top_level_special_float(self):
+        # encode() handles a bare top-level float (not wrapped in a container).
+        assert dumps_json(float("nan")) == '"NaN"'
+        assert dumps_json(float("inf")) == '"Infinity"'
+        assert dumps_json(float("-inf")) == '"-Infinity"'
+
+    def test_default_raises_for_unsupported_type(self):
+        class Unserialisable:
+            pass
+
+        # Wrapped in a tuple so it reaches default(); the fallthrough to
+        # super().default() raises TypeError as the base encoder would.
+        with pytest.raises(TypeError):
+            json.dumps({"x": (Unserialisable(),)}, cls=ExtendedJSONEncoder)
 
 
 class TestLoadsJson:
