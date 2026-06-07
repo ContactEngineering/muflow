@@ -40,7 +40,11 @@ from muflow.backends import ExecutionBackend, LocalBackend, PlanHandle
 from muflow.backends.handle import PlanProgress
 
 # Core context
-from muflow.context import TaskContext, create_local_context
+from muflow.context import (
+    TaskContext,
+    create_local_context,
+    set_context_factory,
+)
 
 # Executor
 from muflow.executor import ExecutionPayload, ExecutionResult, execute_task
@@ -92,6 +96,7 @@ __all__ = [
     # Context
     "TaskContext",
     "create_local_context",
+    "set_context_factory",
     # Outputs
     "OutputFile",
     "get_outputs_schema",

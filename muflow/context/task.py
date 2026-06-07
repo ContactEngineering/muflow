@@ -85,6 +85,20 @@ class TaskContext:
         return self._storage
 
     @property
+    def dependency_storages(self) -> Dict[str, StorageBackend]:
+        """Mapping of dependency key -> storage backend (read-only copy).
+
+        Exposed so a context factory can rebuild a domain-specific context
+        that shares this context's dependencies.
+        """
+        return dict(self._dependency_storages)
+
+    @property
+    def progress_reporter(self) -> Callable[[int, int, str], None]:
+        """The progress-reporting callable (for context factories)."""
+        return self._progress_reporter
+
+    @property
     def storage_prefix(self) -> str:
         """Return the storage prefix (path or S3 key prefix)."""
         return self._storage.storage_prefix

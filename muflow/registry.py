@@ -59,6 +59,14 @@ class TaskEntry:
     identity_keys : list[str] | None
         List of keys in kwargs that define the task's identity for hashing.
         If None, all kwargs are used.
+    context_type : str
+        Name of the context the task expects. ``"task"`` (default) means the
+        plain :class:`~muflow.context.TaskContext`. A domain package can
+        register a context factory (see
+        :func:`muflow.context.factory.set_context_factory`) that upgrades the
+        base context to a domain-specific subclass for other values (e.g.
+        ``"topography"`` / ``"surface"``). Lets a task declare *what kind of
+        input it operates on* without doing the loading itself.
     """
 
     name: str
@@ -68,6 +76,7 @@ class TaskEntry:
     parameters: Optional[Type[pydantic.BaseModel]] = None
     outputs: Optional[Type] = None
     identity_keys: Optional[List[str]] = None
+    context_type: str = "task"
 
 
 # ── Registry storage ───────────────────────────────────────────────────────
@@ -109,6 +118,7 @@ def register_task(
     queue: str = "default",
     parameters: Optional[Type[pydantic.BaseModel]] = None,
     outputs: Optional[Type] = None,
+    context: str = "task",
 ) -> Callable:
     """Decorator that registers a function as a task.
 
@@ -165,6 +175,7 @@ def register_task(
             parameters=parameters,
             outputs=outputs,
             identity_keys=final_identity_keys,
+            context_type=context,
         )
         _register_entry(entry)
         return fn

@@ -147,6 +147,16 @@ def execute_task(
         if not isinstance(entry, TaskEntry):
             raise TypeError(f"Registry returned non-TaskEntry: {type(entry)}")
 
+        # Upgrade to the task's declared context type, if a domain factory is
+        # registered (default: keep the plain TaskContext). The upgraded
+        # context shares this context's storage, dependencies and progress
+        # reporter, so context.json (already written above) is visible to it.
+        from muflow.context.factory import build_typed_context
+
+        context = build_typed_context(
+            context, getattr(entry, "context_type", "task"), payload.context_data
+        )
+
         # Validate parameters and attach to context
         if entry.parameters is not None:
             context._kwargs = entry.parameters(**payload.kwargs)

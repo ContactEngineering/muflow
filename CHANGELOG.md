@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.4.0 (2026-06-07)
+
+- **Context factory**: Context factor for injection of custom-made context classes
+
 ## v0.3.0 (2026-04-19)
 
 ### Bug fixes
