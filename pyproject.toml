@@ -86,10 +86,17 @@ branch = true
 omit = ["*/examples/*"]
 
 [tool.coverage.report]
+show_missing = true
+fail_under = 90
 exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:",
     "raise NotImplementedError",
     "@(abc\\.)?abstractmethod",
+    "@(typing\\.)?overload",
     "if __name__ == .__main__.:",
+]
+# Protocol / abstract method bodies that are just an ellipsis carry no logic.
+exclude_also = [
+    "^\\s*\\.\\.\\.\\s*$",
 ]

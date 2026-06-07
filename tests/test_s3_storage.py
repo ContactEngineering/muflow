@@ -126,3 +126,26 @@ class TestS3StorageBackend:
         backend.save_json("data.json", {"v": 1})
         with pytest.raises(FileExistsError):
             backend.save_json("data.json", {"v": 2})
+
+    def test_save_and_read_text(self, s3_bucket, s3_client):
+        backend = S3StorageBackend(
+            storage_prefix="test", bucket=s3_bucket, s3_client=s3_client
+        )
+        backend.save_text("note.txt", "héllo")
+        assert backend.read_file("note.txt").decode("utf-8") == "héllo"
+        assert "note.txt" in backend.written_files
+
+    def test_save_text_custom_encoding(self, s3_bucket, s3_client):
+        backend = S3StorageBackend(
+            storage_prefix="test", bucket=s3_bucket, s3_client=s3_client
+        )
+        backend.save_text("latin.txt", "café", encoding="latin-1")
+        assert backend.read_file("latin.txt").decode("latin-1") == "café"
+
+    def test_save_text_write_once(self, s3_bucket, s3_client):
+        backend = S3StorageBackend(
+            storage_prefix="test", bucket=s3_bucket, s3_client=s3_client
+        )
+        backend.save_text("note.txt", "first")
+        with pytest.raises(FileExistsError):
+            backend.save_text("note.txt", "second")

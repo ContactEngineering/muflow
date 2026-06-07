@@ -296,3 +296,118 @@ class TestCancelPlan:
             backend.cancel_plan(handle.plan_id)
             desc = sfn_client.describe_execution(executionArn=handle.plan_id)
             assert desc["status"] in ("ABORTED", "STOPPED", "RUNNING")
+
+
+# ── Lambda node executor (create_lambda_handler) ────────────────────────────
+
+
+class TestCreateLambdaHandler:
+    """The handler is the compute half: it runs a single node against S3."""
+
+    def _make_event(self, task_name, prefix, **over):
+        event = {
+            "task_name": task_name,
+            "kwargs": {},
+            "storage_prefix": prefix,
+            "dependency_prefixes": {},
+            "bucket": BUCKET,
+            "node_key": "muflow/" + task_name + "/abc123def456",
+        }
+        event.update(over)
+        return event
+
+    def test_executes_task_and_writes_to_s3(self):
+        from muflow import registry
+        from muflow.backends.step_functions import create_lambda_handler
+
+        registry.clear()
+        try:
+
+            @registry.register_task(name="sfn.write")
+            def write(context):
+                context.save_json("result.json", {"ok": True})
+
+            with mock_aws():
+                s3 = boto3.client("s3", region_name="us-east-1")
+                s3.create_bucket(Bucket=BUCKET)
+
+                handler = create_lambda_handler()
+                event = self._make_event("sfn.write", "muflow/sfn.write/n")
+                result = handler(event, None)
+
+                assert result == {
+                    "status": "success",
+                    "node_key": "muflow/sfn.write/abc123def456",
+                }
+                # The task's output really landed in S3.
+                obj = s3.get_object(
+                    Bucket=BUCKET, Key="muflow/sfn.write/n/result.json"
+                )
+                assert json.loads(obj["Body"].read()) == {"ok": True}
+                # Completion is signalled by manifest.json.
+                s3.head_object(
+                    Bucket=BUCKET, Key="muflow/sfn.write/n/manifest.json"
+                )
+        finally:
+            registry.clear()
+
+    def test_unknown_task_raises_value_error(self):
+        from muflow import registry
+        from muflow.backends.step_functions import create_lambda_handler
+
+        registry.clear()
+        try:
+            handler = create_lambda_handler(task_registry={})
+            with pytest.raises(ValueError, match="Unknown task"):
+                handler(self._make_event("sfn.nope", "muflow/sfn.nope/n"), None)
+        finally:
+            registry.clear()
+
+    def test_task_failure_raises_runtime_error(self):
+        from muflow import registry
+        from muflow.backends.step_functions import create_lambda_handler
+
+        registry.clear()
+        try:
+
+            @registry.register_task(name="sfn.boom")
+            def boom(context):
+                raise RuntimeError("kaboom")
+
+            with mock_aws():
+                s3 = boto3.client("s3", region_name="us-east-1")
+                s3.create_bucket(Bucket=BUCKET)
+
+                handler = create_lambda_handler()
+                with pytest.raises(RuntimeError, match="kaboom"):
+                    handler(self._make_event("sfn.boom", "muflow/sfn.boom/n"), None)
+        finally:
+            registry.clear()
+
+    def test_explicit_registry_overrides_global(self):
+        """A passed-in registry is used verbatim, ignoring the global one."""
+        from muflow import registry
+        from muflow.backends.step_functions import create_lambda_handler
+
+        registry.clear()
+        try:
+            calls = []
+
+            def custom(context):
+                calls.append(True)
+                context.save_json("r.json", {})
+
+            from muflow.registry import TaskEntry
+
+            custom_registry = {
+                "sfn.custom": TaskEntry(name="sfn.custom", fn=custom)
+            }
+            with mock_aws():
+                s3 = boto3.client("s3", region_name="us-east-1")
+                s3.create_bucket(Bucket=BUCKET)
+
+                handler = create_lambda_handler(task_registry=custom_registry)
+                handler(self._make_event("sfn.custom", "muflow/sfn.custom/n"), None)
+                assert calls == [True]
+        finally:
+            registry.clear()

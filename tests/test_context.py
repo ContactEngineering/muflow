@@ -203,3 +203,69 @@ class TestStorageSafetyViaContext:
             assert ctx.storage is not None
             ctx.save_json("test.json", {})
             assert "test.json" in ctx.storage.written_files
+
+    def test_save_and_read_text(self):
+        """save_text/read_text should round-trip through the backend."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ctx = create_local_context(path=tmpdir, kwargs={})
+            ctx.save_text("note.txt", "héllo")
+            assert ctx.read_text("note.txt") == "héllo"
+
+    def test_read_text_custom_encoding(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ctx = create_local_context(path=tmpdir, kwargs={})
+            ctx.save_text("latin.txt", "café", encoding="latin-1")
+            assert ctx.read_text("latin.txt", encoding="latin-1") == "café"
+
+    def test_dependency_storages_property_is_copy(self):
+        """dependency_storages exposes a copy keyed by dependency key."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dep = Path(tmpdir) / "dep"
+            dep.mkdir()
+            ctx = create_local_context(
+                path=str(Path(tmpdir) / "main"),
+                kwargs={},
+                dependency_paths={"dep1": str(dep)},
+            )
+            storages = ctx.dependency_storages
+            assert set(storages) == {"dep1"}
+            # Mutating the returned dict must not affect the context.
+            storages.clear()
+            assert ctx.has_dependency("dep1")
+
+    def test_progress_reporter_property(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            def reporter(c, t, m):  # pragma: no cover - identity check only
+                pass
+
+            ctx = create_local_context(
+                path=tmpdir, kwargs={}, progress_reporter=reporter
+            )
+            assert ctx.progress_reporter is reporter
+
+    def test_report_progress_delegates_to_reporter(self):
+        calls = []
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ctx = create_local_context(
+                path=tmpdir,
+                kwargs={},
+                progress_reporter=lambda c, t, m: calls.append((c, t, m)),
+            )
+            ctx.report_progress(3, 10, "working")
+            assert calls == [(3, 10, "working")]
+
+    def test_default_progress_reporter_prints(self, capsys):
+        """The default reporter writes a right-aligned percentage to stdout."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ctx = create_local_context(path=tmpdir, kwargs={})
+            ctx.report_progress(1, 4, "quarter")
+            out = capsys.readouterr().out
+            assert "25.0%" in out
+            assert "quarter" in out
+
+    def test_default_progress_reporter_zero_total(self, capsys):
+        """total == 0 must not raise ZeroDivisionError."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ctx = create_local_context(path=tmpdir, kwargs={})
+            ctx.report_progress(0, 0, "init")
+            assert "0.0%" in capsys.readouterr().out

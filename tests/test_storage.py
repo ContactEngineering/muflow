@@ -320,3 +320,36 @@ class TestComputePrefix:
     def test_unknown_task_label(self):
         p = compute_prefix({"x": 1})
         assert "unknown" in p
+
+
+class TestAllowedOutputs:
+    """allowed_outputs restricts which filenames a task may write."""
+
+    def test_none_means_no_restriction(self, tmp_path):
+        backend = LocalStorageBackend(str(tmp_path), allowed_outputs=None)
+        backend.save_json("anything.json", {"v": 1})
+        assert "anything.json" in backend.written_files
+
+    def test_empty_set_is_read_only(self, tmp_path):
+        backend = LocalStorageBackend(str(tmp_path), allowed_outputs=set())
+        with pytest.raises(PermissionError, match="read-only"):
+            backend.save_json("out.json", {"v": 1})
+
+    def test_file_not_in_allowed_set_rejected(self, tmp_path):
+        backend = LocalStorageBackend(
+            str(tmp_path), allowed_outputs={"declared.json"}
+        )
+        with pytest.raises(PermissionError, match="declared in outputs"):
+            backend.save_file("undeclared.bin", b"x")
+
+    def test_declared_file_allowed(self, tmp_path):
+        backend = LocalStorageBackend(
+            str(tmp_path), allowed_outputs={"declared.json"}
+        )
+        backend.save_json("declared.json", {"ok": True})
+        assert "declared.json" in backend.written_files
+
+    def test_restriction_applies_to_text(self, tmp_path):
+        backend = LocalStorageBackend(str(tmp_path), allowed_outputs=set())
+        with pytest.raises(PermissionError):
+            backend.save_text("note.txt", "hi")
